@@ -1,0 +1,20 @@
+import os
+from stilts import tread, tmatch2
+
+INDIR = '.'
+OUTNAME = "marco_408.vot"
+
+incat =  tread(os.path.join(INDIR, "marco.vot"))
+fitcat = tread(os.path.join(INDIR, "marco_fits_408.csv"), "csv")
+
+for col in fitcat.columns():
+    if not col.name == "ID":
+        fitcat = fitcat.cmd_replacecol(col.name, "toFloat(%s)" % col.name)
+
+matched = tmatch2(matcher = "exact",
+                  in1 = incat, values1 = "ID",
+                  in2 = fitcat, values2 = "ID")
+matched = matched.cmd_delcols("ID_2")
+matched = matched.cmd_colmeta("-name", "ID", "ID_1")
+matched.write(OUTNAME+".vot")
+matched.write(OUTNAME+".csv", "csv")

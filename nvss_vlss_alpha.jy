@@ -1,0 +1,6 @@
+import os, sys
+from stilts import tread, tcat, tmatch1, tmatch2
+
+INDIR='.'
+marco = tread(os.path.join(INDIR, "marco.vot")).cmd_select("!NULL_ID_vlss").cmd_select("!NULL_ID_nvss")
+marco.cmd_addcol("SpIndex" "

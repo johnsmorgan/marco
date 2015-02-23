@@ -1,0 +1,8 @@
+import os, sys
+from stilts import tread, tcat, tmatch1, tmatch2
+
+INDIR='.'
+marco = tread(os.path.join(INDIR, "marco_408.vot"))
+marco = marco.cmd_select("S_408_2 > 1")
+marco = marco.cmd_select("MajAxis_vlss*MinAxis_vlss < 6400")
+marco.write("marco_vlss_bright_408.vot")

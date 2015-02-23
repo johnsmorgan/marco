@@ -1,0 +1,102 @@
+import os, sys
+from stilts import tread, tcat, tmatch1, tmatch2
+
+MWA_LAT=-26.7
+INDIR = "."
+
+# All of these have been downloaded from Vizier apart from VLSSr which comes direct from the NRAO page.
+CAT_NAMES = ["nvss", "vlss", "mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps", "msh"]
+OUTNAME         = "marco"
+MATCHER         = "skyellipse"
+VALUES          = "RAJ2000 DEJ2000 MajAxis+e_MajAxis MinAxis+e_MinAxis PA"
+PARAMS          = "100"
+ISOLATED_ARCSEC = 240 # any more than about 300 and it turns into a flood-fill exercise and fails
+N_SELECT = "DEJ2000 >= -40"
+S_SELECT = "DEJ2000 < -40"
+
+logfile = open(OUTNAME+".log", 'w')
+print "loading tables..."
+tables = {}
+for table in CAT_NAMES:
+    print "  %s" % table
+    tables[table] = tread(os.path.join(INDIR, "%s_standard.vot" % table)).cmd_select("DEJ2000 < %.1f" % (MWA_LAT+90))
+
+#split sumss in sumss_north and sumss_south and combine with mgps
+sumss = tables.pop("sumss")
+mgps = tables.pop("mgps")
+print "rearranging tables..."
+tables["sumss_north"] = tcat([sumss.cmd_select(N_SELECT), mgps.cmd_select(N_SELECT)])
+tables["sumss_south"] = tcat([sumss.cmd_select(S_SELECT), mgps.cmd_select(S_SELECT)])
+tables["sumss_north"].write("sumss_north.vot")
+tables["sumss_south"].write("sumss_south.vot")
+tables["wsrt"] = tcat([tables.pop("wenss"), tables.pop("wish")])
+
+primaries = ("nvss", "sumss_south")
+
+secondaries_tuple = ("vlss", "mwacs", "mrc", "sumss_north", "wsrt", "culgoora160", "culgoora80", "msh") # North
+
+print "Matching..."
+matches = []
+label = ('N', 'S')
+select = (N_SELECT, S_SELECT)
+for p, pname in enumerate(primaries):
+    print  >> logfile, "Primary %s" % pname
+    tables[pname] = tables[pname].cmd_addcol("primary", "-before", "RAJ2000", 'toString("%s")' % pname)
+    secondaries = list(secondaries_tuple)
+
+    # mark isolated sources
+    try:
+        # NB this takes around 5 minutes on my desktop with params=240
+        tables[pname] = tmatch1(tables[pname], matcher="sky", params="%d" % ISOLATED_ARCSEC, values="RAJ2000 DEJ2000", action="identify")
+    except:
+        print "no groups for table %s" % pname
+    tables[pname] = tables[pname].cmd_addcol("isolated", "NULL_GroupID")
+    tables[pname] = tables[pname].cmd_delcols("GroupID GroupSize")
+    tables[pname].write("%s_primary.vot" % pname)
+
+    for s, sname in enumerate(secondaries):
+        print >> logfile,  "  Secondary %s" % sname
+
+        #return primary including both matched and unmatched primary sources
+        matched_full = tmatch2(matcher = MATCHER, params = PARAMS, join = "all1",
+                               in1 = tables[pname], values1 = VALUES, suffix1 = "",
+                               in2 = tables[sname], values2 = VALUES, suffix2 = "_%s" % sname)
+
+        # convert separation to float and give unique name
+        matched_full = matched_full.cmd_replacecol("Separation", "toFloat(Separation)")
+        matched_full = matched_full.cmd_colmeta("-name", "Separation_%s" % sname, "Separation")
+        # pass on the un-matched ones to be matched with the next secondary (keeping the null columns)
+        print >> logfile, "      %s %s" % (pname, tables[pname].getRowCount())
+        tables[pname] = matched_full.cmd_select("null_id_%s" % sname)
+        print >> logfile, "      %s %s" % (pname, tables[pname].getRowCount())
+        # pass on the matched ones to be matched with the tertiary catalogues
+        matched = matched_full.cmd_select("!null_id_%s" % sname)
+        matched = matched.cmd_addcol("secondary", "-before", "RAJ2000", 'toString("%s")' % sname)
+        # remove those already matched from secondary
+        print >> logfile,  "      %s %s" % (sname, tables[sname].getRowCount())
+        tables[sname] = tmatch2(matcher = "exact", join = "1not2",
+                            in1 = tables[sname], values1 = "id",
+                            in2 = matched,       values2 = "id_%s" % sname)
+        print  >> logfile, "      %s %s" % (sname, tables[sname].getRowCount())
+
+        tables[sname].cmd_select(select[p]).write("%s_%s_nomatch.vot" % (sname, label[p]))
+
+        for tname in secondaries[s+1:]:
+            print >> logfile, "    Tertiary %s" % tname
+            matched = tmatch2(matcher = MATCHER, params = PARAMS, join="all1",
+                              in1 = matched,       values1 = VALUES, suffix1 = "",
+                              in2 = tables[tname], values2 = VALUES, suffix2 = "_%s" % tname)
+            matched = matched.cmd_replacecol("Separation", "toFloat(Separation)")
+            matched = matched.cmd_colmeta("-name", "Separation_%s" % tname, "Separation")
+            # remove those already matched from tertiary
+            print >> logfile, "      %s %s" % (tname, tables[tname].getRowCount())
+            tables[tname] = tmatch2(matcher = "exact", join = "1not2",
+                                    in1 = tables[tname], values1 = "id",
+                                    in2 = matched,       values2 = "id_%s" % tname)
+            print >> logfile, "      %s %s" % (tname, tables[tname].getRowCount())
+        #matched.write("%s_%s_pst.vot" % (pname, sname))
+        matches.append(matched)
+marco = tcat(matches)
+marco = marco.cmd_sort("ID")
+marco.write(OUTNAME+".vot")
+marco.write(OUTNAME+".csv", "csv")

@@ -1,0 +1,22 @@
+"""
+this appears to throw up errors or run very slowly
+"""
+import os
+from stilts import tread, tmatch1
+INDIR="."
+OUTDIR="cluster_2arcsec"
+MWA_LAT=-26.7
+#CAT_NAMES = ["nvss", "vlss", "mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps"]
+CAT_NAMES = ["mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps"]
+ISOLATED_ARCSEC=60
+tables = {}
+for table in CAT_NAMES:
+    print "loading  %s" % table
+    tables[table] = tread(os.path.join(INDIR, "%s_standard.vot" % table))
+    print "internal match  %s" % table
+    try:
+        tables[table] = tmatch1(tables[table], matcher="sky", params="%d" % ISOLATED_ARCSEC, values="RAJ2000 DEJ2000", action="identify")
+        tables[table].write(os.path.join(OUTDIR, "%s_internal_match.vot" % table))
+    except:
+        print "match failed for %s" % table
+    print "writing  %s" % table

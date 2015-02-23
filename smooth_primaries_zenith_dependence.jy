@@ -1,0 +1,19 @@
+"""
+this appears to throw up errors or run very slowly
+"""
+import os
+from stilts import tread, tmatch1
+INDIR="."
+MWA_LAT=-26.7
+CAT_NAMES = ["nvss", "vlss", "mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps"]
+ISOLATED_ARCSEC=120
+tables = {}
+for table in CAT_NAMES:
+    print "loading  %s" % table
+    tables[table] = tread(os.path.join(INDIR, "%s_standard.vot" % table))
+    #tables[table] = tables[table].cmd_addcol("SEC_ZENITH", "1/cos(degreesToRadians(DEJ2000-%.1f))" % MWA_LAT)
+    print "internal match  %s" % table
+    #tables[table] = tmatch1(tables[table], matcher="skyEllipse", params="%d" % ISOLATED_ARCSEC, values="RAJ2000 DEJ2000 SEC_ZENITH>10.0?10.0*%.1f:SEC_ZENITH*%.1f %.1f 0.0" % (ISOLATED_ARCSEC, ISOLATED_ARCSEC, ISOLATED_ARCSEC), action="identify")
+    print "writing  %s" % table
+    tables[table].write("%s_internal_match.vot" % table)
+

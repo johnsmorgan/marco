@@ -1,0 +1,197 @@
+import os, sys
+import stilts
+
+INDIR = ".."
+MAX_SNR = 33.5 # Maximum S/e_S for both NVSS and SUMSS is around 33.5
+
+# FIXME list of vizier links
+# FIXME list of ads bibcodes
+# All of these have been downloaded from Vizier apart from VLSSr which comes direct from the NRAO page.
+#CAT_NAMES = ["nvss", "vlss", "mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps"]
+CAT_NAMES = ["mwacs"]
+
+CAT_FILENAMES = {"nvss": "nvss.b64",
+                 "vlss": "VLSSR.MODCAT.FIT",
+                  "mrc": "mrc.b64",
+                "mwacs": "mwacs_all_rc1_140811.vot",
+                  "msh": "msh.vot",
+                 "wish": "wish.b64",
+                "wenss": "wenss.b64",
+           "culgoora80": "culgoora.vot", #NB: Culgoora is formally the CCA survey
+          "culgoora160": "culgoora.vot", #NB: Culgoora is formally the CCA survey
+                "sumss": "sumss.b64",
+                 "mgps": "mgps.b64"}
+
+OUTNAME= "marco"
+
+CAT_FREQ = {"nvss": 1400.,
+            "vlss": 74.,
+             "mrc": 408.,
+           "mwacs": 180.,
+             "msh": 81.,
+            "wish": 326.,
+           "wenss": 326.,
+      "culgoora80": 80.,
+     "culgoora160": 160.,
+           "sumss": 843.,
+            "mgps": 843.} # in MHz
+
+# Keep only relevant columns to avoid accidental name clashes
+CAT_KEEPCOLS = {"nvss": ("NVSS", "_RAJ2000", "_DEJ2000", "S1_4", "e_S1_4", "MajAxis", "e_MajAxis", "l_MajAxis", "MinAxis", "e_MinAxis", "l_MinAxis", "PA", "e_PA", "e_RAJ2000", "e_DEJ2000"),
+                "vlss": ("RA_2000_", "DEC_2000_", "PEAK_INT", "I_RMS", "MAJOR_AX", "MINOR_AX", "POSANGLE"),
+                 "mrc": ("MRC", "RA2000", "DE2000", "S408", "e_S408"),
+                 "msh": ("Name", "_RA_icrs", "_DE_icrs", "S"),
+               "mwacs": ("Name", "RAJ2000", "DEJ2000", "S180", "e_S180",   "MajAxis", "e_MajAxis", "MinAxis", "e_MinAxis", "PA", "e_PA", "e_RAJ2000", "e_DEJ2000"),
+                "wish": ("WNB", "_RAJ2000", "_DEJ2000", "S", "Nse", "bMax", "bMin","PA"),
+               "wenss": ("Name", "f_Name", "RAJ2000", "DEJ2000", "Sint", "Nse", "MajAxis","MinAxis","PA"),
+          "culgoora80": ("Cul", "_RAJ2000", "_DEJ2000", "S80"),
+         "culgoora160": ("Cul", "_RAJ2000", "_DEJ2000", "S160",),
+               "sumss": ("_RAJ2000", "_DEJ2000", "St", "e_St", "MajAxis", "MinAxis", "PA", "e_RAJ2000", "e_DEJ2000"),
+                "mgps": ("_RAJ2000", "_DEJ2000", "St", "e_St", "MajAxis", "MinAxis", "PA", "e_RAJ2000", "e_DEJ2000")}
+
+# Expression for deriving SNR from which e_Maj etc. can be calculated. Primarily for catalogues where errors need to be derived:
+CAT_SNR = {"nvss": "S1_4/e_S1_4",
+           "vlss": "PEAK_INT*(MAJOR_AX*3600)*(MINOR_AX*3600)/(80*80)/I_RMS",
+            "mrc": "S408/e_S408",
+            "msh": "10",
+          "mwacs": "S180/e_S180",
+           "wish": "S/Nse",
+          "wenss": "Sint/Nse",
+     "culgoora80": "10",
+    "culgoora160": "10",
+          "sumss": "St/e_St",
+           "mgps": "St/e_St"}
+
+#columns in processing order
+COL_INDEX = [       "RAJ2000",  "DEJ2000",   "S",                                                 "e_S",      "MajAxis",                                                  "e_MajAxis",                            "MinAxis",                       "e_MinAxis",                            "PA",           "e_PA",   "e_RAJ2000",                       "e_DEJ2000"]
+
+# SKIP means that column already has the correct name, DERIVE means derive from SNR and other columns using standard formula
+# NB USing integrated flux throughout since most catalogues give integrated flux only. Only VLSS doesn't, so use 80*80" restoring beam
+# NB VLSS/NVSS file have awkward characters in column names. These are fixed by cmd_fixcolnames below before this dictionary is used.
+CAT_COL = {"nvss": ("_RAJ2000", "_DEJ2000",  "S1_4",                                             "e_S1_4",   "SKIP",                                                     "NULL_e_MajAxis?MajAxis/SNR:e_MajAxis", "SKIP",                          "NULL_e_MinAxis?MinAxis/SNR:e_MinAxis", "NULL_PA?0:PA", "SKIP",   "SKIP",                            "SKIP"),
+           "vlss": ("RA_2000_", "DEC_2000_", "PEAK_INT*(MAJOR_AX*3600)*(MINOR_AX*3600)/(80*80)", "I_RMS",    "MAJOR_AX",                                                 "DERIVE",                               "MINOR_AX",                      "DERIVE",                               "POSANGLE",     "DERIVE", "DERIVE",                          "DERIVE"),
+            "mrc": ("RA2000",   "DE2000",    "S408",                                             "e_S408",   "2.86/cos(DEGREE_RADIANS*(DE2000+35.5))",                   "DERIVE",                               "2.62",                          "DERIVE",                               "0.0",          "0.0",    "DERIVE",                          "DERIVE"),
+            "msh": ("_RA_icrs",  "_DE_icrs",   "S",                                                "0.1*S",    "30",                                                       "DERIVE",                               "30",                            "DERIVE",                               "0.0",          "0.0",    "DERIVE",                          "DERIVE"),
+          "mwacs": ("SKIP",     "SKIP",      "S180",                                             "e_S180",   "SKIP",                                                     "SKIP",                                 "SKIP",                          "SKIP",                                 "SKIP",         "SKIP",   "SKIP",                            "SKIP"),
+           "wish": ("_RAJ2000", "_DEJ2000",  "S",                                                "Nse",      "bMax<=1?54.0/abs(sin(DEGREE_RADIANS*DEJ2000)):bMax",       "DERIVE",                               "bMin>1?bMin:54.0",              "DERIVE",                               "PA",           "DERIVE", "DERIVE",                          "DERIVE"),
+          "wenss": ("SKIP",     "SKIP",      "Sint",                                             "Nse",      "MajAxis<=1?54.0/abs(sin(DEGREE_RADIANS*DEJ2000)):MajAxis", "DERIVE",                               "MinAxis<=1?54.0:MinAxis",       "DERIVE",                               "SKIP",         "DERIVE", "DERIVE",                          "DERIVE"),
+     "culgoora80": ("_RAJ2000", "_DEJ2000",  "S80",                                              "0.1*S80",  "1.9/cos(DEGREE_RADIANS*(DEJ2000+30.32))",                  "DERIVE",                               "2.62",                          "DERIVE",                               "0.0",          "0.0",    "DERIVE",                          "DERIVE"),
+    "culgoora160": ("_RAJ2000", "_DEJ2000",  "S160",                                             "0.1*S160", "1.9/cos(DEGREE_RADIANS*(DEJ2000+30.32))",                  "DERIVE",                               "2.62",                          "DERIVE",                               "0.0",          "0.0",    "DERIVE",                          "DERIVE"),
+          "sumss": ("_RAJ2000", "_DEJ2000",  "St",                                               "e_St",     "MajAxis<=1?45/cos(DEGREE_RADIANS*(DEJ2000+35.5)):MajAxis", "DERIVE",                               "MinAxis<=1?45:MinAxis",         "DERIVE",                               "SKIP",         "DERIVE", "SKIP",                            "SKIP"),
+           "mgps": ("_RAJ2000", "_DEJ2000",  "St",                                               "e_St",     "MajAxis<=1?45/cos(DEGREE_RADIANS*(DEJ2000+35.5)):MajAxis", "DERIVE",                               "MinAxis<=1?45:MinAxis",         "DERIVE",                               "SKIP",         "DERIVE", "SKIP",                            "SKIP")}
+
+#columns in output order
+COL_OUT = ["ID", "RAJ2000", "e_RAJ2000", "DEJ2000", "e_DEJ2000", "S", "e_S", "MajAxis", "e_MajAxis", "MinAxis", "e_MinAxis", "PA",   "e_PA"]
+
+#conversion factors
+CAT_CONVERT = {"nvss": ("1e0",   "1e0",       "1e-3",                                             "1e-3",     "1.0",                                                      "1.0",                                  "1.0",                           "1.0",                                  "1.0",          "1.0",    "15*cos(DEGREE_RADIANS*DEJ2000)",  "1.0"),
+               "vlss": ("1e0",   "1e0",       "1e0",                                              "1e0",      "3600.0",                                                   "1.0",                                  "3600.0",                        "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+                "mrc": ("1e0",   "1e0",       "1e0",                                              "1e0",      "60.0",                                                     "1.0",                                  "60.0",                          "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+                "msh": ("1e0",   "1e0",       "1e0",                                              "1e0",      "60.0",                                                     "1.0",                                  "60.0",                          "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+              "mwacs": ("1e0",   "1e0",       "1e0",                                              "1e0",      "60.0",                                                     "60.0",                                 "60.0",                          "60.0",                                 "1.0",          "1.0",    "60.0",                            "60.0"),
+               "wish": ("1e0",   "1e0",       "1e-3",                                             "1e-3",     "1.0",                                                      "1.0",                                  "1.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+              "wenss": ("1e0",   "1e0",       "1e-3",                                             "1e-3",     "1.0",                                                      "1.0",                                  "1.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+         "culgoora80": ("1e0",   "1e0",       "1e0",                                              "1e0",      "60.0",                                                     "1.0",                                 "60.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+        "culgoora160": ("1e0",   "1e0",       "1e0",                                              "1e0",      "60.0",                                                     "1.0",                                 "60.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+              "sumss": ("1e0",   "1e0",       "1e-3",                                             "1e-3",     "1.0",                                                      "1.0",                                  "1.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0"),
+               "mgps": ("1e0",   "1e0",       "1e-3",                                             "1e-3",     "1.0",                                                      "1.0",                                  "1.0",                           "1.0",                                  "1.0",          "1.0",    "1.0",                             "1.0")}
+
+
+CAT_ID = {"nvss": '''"NVSS J"+NVSS''',
+          "vlss": '''"VLSS J"+replaceAll(replaceAll(degreesToHms(RAJ2000, 1), ":", ""), "[.][0-9]", "")+replaceAll(replaceAll(degreesToDms(DEJ2000, 1), ":", ""), "[.][0-9]", "")''',
+           "mrc": '''"MRC B" + MRC''',
+           "msh": '''Name''',
+         "mwacs": '''Name''',
+          "wish": '''"WISH B"+WNB''',
+         "wenss": '''"WENSS "+Name + toUpperCase(toString(f_Name))''',
+    "culgoora80": '''"CUL B"+Cul''',
+   "culgoora160": '''"CUL B"+Cul''',
+         "sumss": '''"SUMSS J"+replaceAll(replaceAll(degreesToHms(RAJ2000, 1), ":", ""), "[.][0-9]", "")+replaceAll(replaceAll(degreesToDms(DEJ2000, 1), ":", ""), "[.][0-9]", "")''',
+          "mgps": '''"MGPS J"+replaceAll(replaceAll(degreesToHms(RAJ2000, 1), ":", ""), "[.][0-9]", "")+replaceAll(replaceAll(degreesToDms(DEJ2000, 1), ":", ""), "[.][0-9]", "")'''}
+
+COL_UNITS = {"RAJ2000":   "degrees",
+             "e_RAJ2000": "arcsec",
+             "DEJ2000":   "degrees" ,
+             "e_DEJ2000": "arcsec",
+             "S":         "Jy",
+             "e_S":       "Jy",
+             "MajAxis":   "arcsec",
+             "e_MajAxis": "arcsec",
+             "MinAxis":   "arcsec",
+             "e_MinAxis": "arcsec",
+             "PA":        "degrees",
+             "e_PA":      "degrees"}
+
+COL_UCD = {"RAJ2000":   "pos.eq.ra",
+           "e_RAJ2000": "stat.error;pos.eq.ra",
+           "DEJ2000":   "pos.eq.dec",
+           "e_DEJ2000": "stat.error;pos.eq.dec",
+           "S":         "phot.flux.density;em.radio;",
+           "e_S":       "stat.error;phot.flux.density;em.radio",
+           "MajAxis":   "phys.angSize;em.radio;meta.modelled",
+           "e_MajAxis": "stat.error;phys.angSize",
+           "MinAxis":   "phys.angSize;em.radio;meta.modelled",
+           "e_MinAxis": "stat.error;phys.angSize",
+           "PA":        "pos.posAng;meta.modelled",
+           "e_PA":      "stat.error;pos.posAng"}
+
+COL_DESC = {"RAJ2000":   "Right Ascension J2000",
+            "e_RAJ2000": "Error on RAJ2000",
+            "DEJ2000":   "Declination J2000",
+            "e_DEJ2000": "Error on DEJ2000",
+            "S":         "Integrated Flux Density",
+            "e_S":       "Error on S",
+            "MajAxis":   "Major Axis",
+            "e_MajAxis": "Error on MajAxis",
+            "MinAxis":   "Minor Axis",
+            "e_MinAxis": "Error on MinAxis",
+            "PA":        "Position Angle",
+            "e_PA":      "Error on PA"}
+
+COL_DERIVE = {"e_RAJ2000": "sqrt(pow(e_MajAxis*sin(degreesToRadians(PA)), 2) + pow(e_MinAxis*cos(degreesToRadians(PA)), 2))",
+              "e_DEJ2000": "sqrt(pow(e_MinAxis*sin(degreesToRadians(PA)), 2) + pow(e_MajAxis*cos(degreesToRadians(PA)), 2))",
+              "e_MajAxis": "MajAxis/SNR",
+              "e_MinAxis": "MinAxis/SNR" ,
+              "e_PA": "MajAxis == MinAxis?NULL:radiansToDegrees(sqrt(2*MajAxis*MinAxis/((pow(MajAxis, 2)-pow(MinAxis, 2)))/SNR))"}
+
+tables = {}
+for cat in CAT_NAMES:
+    print cat,
+    # load and fix column names
+    tables[cat] = stilts.tread(os.path.join(INDIR, CAT_FILENAMES[cat]))
+    tables[cat] = tables[cat].cmd_fixcolnames()
+    # delete un-needed columns
+    tables[cat] = tables[cat].cmd_keepcols(' '.join(CAT_KEEPCOLS[cat]))
+    # Add SNR column
+    tables[cat] = tables[cat].cmd_addcol("SNR", CAT_SNR[cat])
+    # consistent names for relevant columns
+    for col in COL_INDEX:
+        print col,
+        if CAT_COL[cat][COL_INDEX.index(col)] == "SKIP":
+            pass
+        elif CAT_COL[cat][COL_INDEX.index(col)] == "DERIVE":
+            tables[cat] = tables[cat].cmd_addcol(col, COL_DERIVE[col])
+        elif CAT_COL[cat][COL_INDEX.index(col)].endswith(":"+col):
+            # Use replacecol (rather than addcol) *only* if using the ternary operator (?:) to deal with NULL values
+            tables[cat] = tables[cat].cmd_replacecol(col, CAT_COL[cat][COL_INDEX.index(col)])
+        else:
+            tables[cat] = tables[cat].cmd_addcol(col, CAT_COL[cat][COL_INDEX.index(col)])
+        # Deal with annoying zero errors 
+        if col == "e_S":
+            tables[cat] = tables[cat].cmd_replacecol(col, "S/e_S>%.1f?S/%.1f:e_S" % (MAX_SNR, MAX_SNR))
+        #any which are derivable *should* be derived if they contain null/zero values
+        if CAT_COL[cat][COL_INDEX.index(col)] != "DERIVE" and col in COL_DERIVE.keys():
+            tables[cat] = tables[cat].cmd_replacecol(col, "NULL_%s || %s == 0.0?%s:%s" % (col, col, COL_DERIVE[col], col))
+        # convert using table above, also use (single precision) float. Should be good to a few milliarcseconds in RA/Dec and more than enough for other columns
+        tables[cat] = tables[cat].cmd_replacecol(col, "toFloat(%s*%s)" % (col, CAT_CONVERT[cat][COL_INDEX.index(col)]))
+        # Add units/ucd/description
+        tables[cat] = tables[cat].cmd_colmeta('-units', COL_UNITS[col], '-ucd', COL_UCD[col], '-desc', COL_DESC[col], col)
+    # Add source ID following IAU convention
+    tables[cat] = tables[cat].cmd_addcol("ID", CAT_ID[cat])
+
+    # get rid of any invalid sources
+    tables[cat] = tables[cat].cmd_select("S>0", CAT_SNR[cat])
+
+    tables[cat] = tables[cat].cmd_keepcols(' '.join(COL_OUT))
+    tables[cat].write(cat+"_standard.vot")
+    print

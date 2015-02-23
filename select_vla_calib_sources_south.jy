@@ -1,0 +1,15 @@
+import os, sys
+from stilts import tread, tcat, tmatch1, tmatch2
+
+INDIR='.'
+#marco = tread(os.path.join(INDIR, "marco_150.vot"))
+marco = tread(os.path.join(INDIR, "marco_408.vot"))
+marco = marco.cmd_select("S_408_2 > 4")
+marco = marco.cmd_select("RAJ2000<120").cmd_select("DEJ2000<30")
+#marco = marco
+marco = marco.cmd_select("ME1_2 < 4")
+#marco = marco.cmd_select("MajAxis_vlss*MinAxis_vlss < 6400")
+#marco = marco.cmd_sort("-down", "S_150_2").cmd_head(100)
+marco = marco.cmd_sort("-down", "S_408_2")
+marco.write("marco_vla_south_408.vot")
+marco.write("marco_vla_south_408.csv")
