@@ -1,6 +1,3 @@
-# concatenate gaps in sky model
-stilts tcat in=gap1.fits in=gap2.fits in=north.fits out=gaps.fits
-
 # remove anything which already has a match in the current sky model
 stilts tmatch2 \
 	in1=gaps.fits \
