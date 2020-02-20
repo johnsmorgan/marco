@@ -18,17 +18,18 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-#REF_FREQ=150.
-REF_FREQ=408.
+#REF_FREQ=408.
+REF_FREQ=150.
 
 
 INDIR       = '.'
 INFILENAME  = 'marco.csv'
 OUTDIR      = '.'
-OUTFILENAME = 'marco_fits_408.csv'
+OUTFILENAME = 'marco_fits.csv'
 DOPLOT      = False
 
 outfile = open(OUTFILENAME, 'w')
+
 def fit_line(x, y, y_err):
     """
     fit straight line and determine errors on fit *based on y_err alone*
@@ -143,7 +144,7 @@ marco = np.genfromtxt("marco.csv", delimiter=',', names=True, usecols=usecols, d
 
 i=0
 
-print >> outfile, "ID,S_408_1,e_S408_1,SpIndex_1,e_SpIndex_1,me1_1,S_408_2,e_S408_2,SpIndex_2,e_SpIndex_2,Curvature_2,e_Curvature_2,me1_2"
+print >> outfile, "ID,S_150_1,e_S150_1,SpIndex_1,e_SpIndex_1,me1_1,S_150_2,e_S150_2,SpIndex_2,e_SpIndex_2,Curvature_2,e_Curvature_2,me1_2"
 
 for c, cat in enumerate((np.compress(marco["primary"] == "nvss", marco), np.compress(marco["primary"] == "sumss_south", marco))):
     if c == 0:
