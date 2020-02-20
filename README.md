@@ -1,4 +1,4 @@
-### MARCO
+# MARCO
 
 Addendum 2020-02-20: This is a crossmatched catalogue I made around 5 years ago (pre-GLEAM, pre-TGSSADR-1) for GLEAM verification and ionospheric measurements. I have recently resurrected it to provide a rough MWA sky model for areas of the sky not currently covered by GLEAM. This has been successful. Please see the `gleam_sky_model` directory or contact me for further details.
 
