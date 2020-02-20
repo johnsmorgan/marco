@@ -1,0 +1,25 @@
+import os, sys
+from stilts import tread, tcat, tmatch1, tmatch2
+
+INDIR='.'
+CAT_FREQ = {"vlss": 74.,
+             "mrc": 408.,
+           "mwacs": 180.,
+            "wsrt": 326.,
+      "culgoora80": 80.,
+     "culgoora160": 160.,
+     "sumss_north": 843.,} # in MHz
+
+print "reading..."
+marco = tread(os.path.join(INDIR, "marco_150.vot"))
+print "replace spectral index..."
+marco = marco.cmd_replacecol("SpIndex_1",  "SpIndex_1<-2?-2:SpIndex_1")
+marco = marco.cmd_replacecol("spindex_1",  "spindex_1>1?1:spindex_1")
+
+print "replace S_150_1..."
+for secondary in ("wsrt", "vlss", "sumss_north", "mwacs", "mrc", "culgoora160", "culgoora80"):
+    print "- %s..." % secondary
+    marco = marco.cmd_replacecol('''S_150_1''', ''' SpIndex_1<-2&&secondary=="%s"?S_%s*pow(150.0/%f,-2):S_150_1''' % (secondary, secondary, CAT_FREQ[secondary]))
+    marco = marco.cmd_replacecol('''S_150_1''', ''' SpIndex_1>1&&secondary=="%s"?S_%s*pow(150.0/%f,1):S_150_1''' % (secondary, secondary, CAT_FREQ[secondary]))
+print "writing..."
+marco.write("marco_150_alpha_fixed.fits")

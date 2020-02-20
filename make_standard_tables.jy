@@ -8,12 +8,13 @@ MAX_SNR = 33.5 # Maximum S/e_S for both NVSS and SUMSS is around 33.5
 # FIXME list of ads bibcodes
 # All of these have been downloaded from Vizier apart from VLSSr which comes direct from the NRAO page.
 #CAT_NAMES = ["nvss", "vlss", "mrc", "mwacs", "wish", "wenss", "culgoora80", "culgoora160", "sumss", "mgps"]
-CAT_NAMES = ["mwacs"]
+#CAT_NAMES = ["mwacs"]
+CAT_NAMES = ["vlss"]
 
 CAT_FILENAMES = {"nvss": "nvss.b64",
-                 "vlss": "VLSSR.MODCAT.FIT",
+                 "vlss": "VLSSR.CATALOG.FIT",
                   "mrc": "mrc.b64",
-                "mwacs": "mwacs_all_rc1_140811.vot",
+                "mwacs": "mwacs.b64",
                   "msh": "msh.vot",
                  "wish": "wish.b64",
                 "wenss": "wenss.b64",
@@ -66,7 +67,7 @@ CAT_SNR = {"nvss": "S1_4/e_S1_4",
 COL_INDEX = [       "RAJ2000",  "DEJ2000",   "S",                                                 "e_S",      "MajAxis",                                                  "e_MajAxis",                            "MinAxis",                       "e_MinAxis",                            "PA",           "e_PA",   "e_RAJ2000",                       "e_DEJ2000"]
 
 # SKIP means that column already has the correct name, DERIVE means derive from SNR and other columns using standard formula
-# NB USing integrated flux throughout since most catalogues give integrated flux only. Only VLSS doesn't, so use 80*80" restoring beam
+# NB Using integrated flux throughout since most catalogues give integrated flux only. Only VLSS doesn't, so use 80*80" restoring beam
 # NB VLSS/NVSS file have awkward characters in column names. These are fixed by cmd_fixcolnames below before this dictionary is used.
 CAT_COL = {"nvss": ("_RAJ2000", "_DEJ2000",  "S1_4",                                             "e_S1_4",   "SKIP",                                                     "NULL_e_MajAxis?MajAxis/SNR:e_MajAxis", "SKIP",                          "NULL_e_MinAxis?MinAxis/SNR:e_MinAxis", "NULL_PA?0:PA", "SKIP",   "SKIP",                            "SKIP"),
            "vlss": ("RA_2000_", "DEC_2000_", "PEAK_INT*(MAJOR_AX*3600)*(MINOR_AX*3600)/(80*80)", "I_RMS",    "MAJOR_AX",                                                 "DERIVE",                               "MINOR_AX",                      "DERIVE",                               "POSANGLE",     "DERIVE", "DERIVE",                          "DERIVE"),
